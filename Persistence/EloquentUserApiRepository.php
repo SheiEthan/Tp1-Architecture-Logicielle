@@ -8,6 +8,13 @@ use App\Models\UserApi as EloquentUserApi;
 
 class EloquentUserApiRepository implements IUserApiRepository
 {
+    public function all(): array
+    {
+        $models = EloquentUserApi::all();
+        return array_map(function ($model) {
+            return $this->toDomain($model);
+        }, $models->all());
+    }
     public function save(UserApi $user): UserApi
     {
         $model = new EloquentUserApi([

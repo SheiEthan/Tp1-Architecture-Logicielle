@@ -16,17 +16,26 @@ class UserApiController
     private GetUserApi $getUserApi;
     private UpdateUserApi $updateUserApi;
     private DeleteUserApi $deleteUserApi;
+    private \Application\UseCases\ListUserApi $listUserApi;
 
     public function __construct(
         CreateUserApi $createUserApi,
         GetUserApi $getUserApi,
         UpdateUserApi $updateUserApi,
-        DeleteUserApi $deleteUserApi
+        DeleteUserApi $deleteUserApi,
+        \Application\UseCases\ListUserApi $listUserApi
     ) {
         $this->createUserApi = $createUserApi;
         $this->getUserApi = $getUserApi;
         $this->updateUserApi = $updateUserApi;
         $this->deleteUserApi = $deleteUserApi;
+        $this->listUserApi = $listUserApi;
+    }
+
+    public function index(): JsonResponse
+    {
+    $users = $this->listUserApi->execute();
+    return response()->json($users);
     }
 
     public function store(Request $request): JsonResponse

@@ -10,4 +10,5 @@ interface IUserApiRepository
     public function find(int $id): ?UserApi;
     public function update(int $id, UserApi $user): ?UserApi;
     public function delete(int $id): bool;
+    public function all(): array;
 }

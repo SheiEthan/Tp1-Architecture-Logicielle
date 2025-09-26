@@ -2,5 +2,5 @@
 
 use Illuminate\Support\Facades\Route;
 
-use App\Http\Controllers\UserApiController;
+use Presentation\UserApiController;
 Route::apiResource('users', UserApiController::class);
