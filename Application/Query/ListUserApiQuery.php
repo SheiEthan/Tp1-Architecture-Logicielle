@@ -1,12 +1,12 @@
 <?php
 
-namespace Application\UseCases;
+namespace Application\Query;
 
 use Application\Ports\IUserApiRepository;
 use Application\Mapping\UserApiMapper;
 use Application\DTO\UserApiDTO;
 
-class ListUserApi
+class ListUserApiQuery
 {
     private IUserApiRepository $repository;
 
@@ -15,7 +15,7 @@ class ListUserApi
         $this->repository = $repository;
     }
 
-    public function execute(): array
+    public function handle(): array
     {
         $users = $this->repository->all();
         return array_map([UserApiMapper::class, 'toDTO'], $users);

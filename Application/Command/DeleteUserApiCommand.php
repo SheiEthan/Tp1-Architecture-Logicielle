@@ -1,10 +1,10 @@
 <?php
 
-namespace Application\UseCases;
+namespace Application\Command;
 
 use Application\Ports\IUserApiRepository;
 
-class DeleteUserApi
+class DeleteUserApiCommand
 {
     private IUserApiRepository $repository;
 
@@ -13,7 +13,7 @@ class DeleteUserApi
         $this->repository = $repository;
     }
 
-    public function execute(int $id): bool
+    public function handle(int $id): bool
     {
         return $this->repository->delete($id);
     }

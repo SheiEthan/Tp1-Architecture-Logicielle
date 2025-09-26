@@ -2,39 +2,34 @@
 
 namespace Presentation;
 
-use Application\UseCases\CreateUserApi;
-use Application\UseCases\GetUserApi;
-use Application\UseCases\UpdateUserApi;
-use Application\UseCases\DeleteUserApi;
 use Application\DTO\UserApiDTO;
+use Application\Mediator\Mediator;
+use Application\Command\CreateUserApiCommand;
+use Application\Command\UpdateUserApiCommand;
+use Application\Command\DeleteUserApiCommand;
+use Application\Query\GetUserApiQuery;
+use Application\Query\ListUserApiQuery;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class UserApiController
 {
-    private CreateUserApi $createUserApi;
-    private GetUserApi $getUserApi;
-    private UpdateUserApi $updateUserApi;
-    private DeleteUserApi $deleteUserApi;
-    private \Application\UseCases\ListUserApi $listUserApi;
+    private Mediator $mediator;
 
-    public function __construct(
-        CreateUserApi $createUserApi,
-        GetUserApi $getUserApi,
-        UpdateUserApi $updateUserApi,
-        DeleteUserApi $deleteUserApi,
-        \Application\UseCases\ListUserApi $listUserApi
-    ) {
-        $this->createUserApi = $createUserApi;
-        $this->getUserApi = $getUserApi;
-        $this->updateUserApi = $updateUserApi;
-        $this->deleteUserApi = $deleteUserApi;
-        $this->listUserApi = $listUserApi;
+    public function __construct(Mediator $mediator)
+    {
+        $this->mediator = $mediator;
+        // Enregistrement des handlers
+        $this->mediator->register(ListUserApiQuery::class, new ListUserApiQuery(app(\Application\Ports\IUserApiRepository::class)));
+        $this->mediator->register(CreateUserApiCommand::class, new CreateUserApiCommand(app(\Application\Ports\IUserApiRepository::class)));
+        $this->mediator->register(GetUserApiQuery::class, new GetUserApiQuery(app(\Application\Ports\IUserApiRepository::class)));
+        $this->mediator->register(UpdateUserApiCommand::class, new UpdateUserApiCommand(app(\Application\Ports\IUserApiRepository::class)));
+        $this->mediator->register(DeleteUserApiCommand::class, new DeleteUserApiCommand(app(\Application\Ports\IUserApiRepository::class)));
     }
 
     public function index(): JsonResponse
     {
-    $users = $this->listUserApi->execute();
+    $users = $this->mediator->send(ListUserApiQuery::class);
     return response()->json($users);
     }
 
@@ -45,15 +40,15 @@ class UserApiController
             $request->input('last_name'),
             $request->input('email'),
             $request->input('phone'),
-            '' // le rôle sera assigné par le use case
+            ''
         );
-        $user = $this->createUserApi->execute($dto);
+        $user = $this->mediator->send(CreateUserApiCommand::class, $dto);
         return response()->json($user, 201);
     }
 
     public function show($id): JsonResponse
     {
-        $user = $this->getUserApi->execute((int)$id);
+        $user = $this->mediator->send(GetUserApiQuery::class, (int)$id);
         if (!$user) {
             return response()->json(['message' => 'Not found'], 404);
         }
@@ -69,7 +64,7 @@ class UserApiController
             $request->input('phone'),
             $request->input('role', '')
         );
-        $user = $this->updateUserApi->execute((int)$id, $dto);
+        $user = $this->mediator->send(UpdateUserApiCommand::class, (int)$id, $dto);
         if (!$user) {
             return response()->json(['message' => 'Not found'], 404);
         }
@@ -78,7 +73,7 @@ class UserApiController
 
     public function destroy($id): JsonResponse
     {
-        $deleted = $this->deleteUserApi->execute((int)$id);
+        $deleted = $this->mediator->send(DeleteUserApiCommand::class, (int)$id);
         if (!$deleted) {
             return response()->json(['message' => 'Not found'], 404);
         }

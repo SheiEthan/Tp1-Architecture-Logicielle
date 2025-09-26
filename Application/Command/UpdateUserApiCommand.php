@@ -1,13 +1,13 @@
 <?php
 
-namespace Application\UseCases;
+namespace Application\Command;
 
 use Application\DTO\UserApiDTO;
 use Application\Ports\IUserApiRepository;
 use Domain\UserApi;
 use Application\Mapping\UserApiMapper;
 
-class CreateUserApi
+class UpdateUserApiCommand
 {
     private IUserApiRepository $repository;
 
@@ -16,18 +16,16 @@ class CreateUserApi
         $this->repository = $repository;
     }
 
-    public function execute(UserApiDTO $dto): UserApiDTO
+    public function handle(int $id, UserApiDTO $dto): ?UserApiDTO
     {
-        // Règle métier : assignation auto du rôle
-        $role = UserApi::assignRole($dto->email);
         $user = new UserApi(
             $dto->firstName,
             $dto->lastName,
             $dto->email,
             $dto->phone,
-            $role
+            $dto->role
         );
-        $created = $this->repository->save($user);
-        return UserApiMapper::toDTO($created);
+        $updated = $this->repository->update($id, $user);
+        return $updated ? UserApiMapper::toDTO($updated) : null;
     }
 }

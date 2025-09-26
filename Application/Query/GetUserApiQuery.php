@@ -1,12 +1,12 @@
 <?php
 
-namespace Application\UseCases;
+namespace Application\Query;
 
 use Application\DTO\UserApiDTO;
 use Application\Ports\IUserApiRepository;
 use Application\Mapping\UserApiMapper;
 
-class GetUserApi
+class GetUserApiQuery
 {
     private IUserApiRepository $repository;
 
@@ -15,7 +15,7 @@ class GetUserApi
         $this->repository = $repository;
     }
 
-    public function execute(int $id): ?UserApiDTO
+    public function handle(int $id): ?UserApiDTO
     {
         $user = $this->repository->find($id);
         return $user ? UserApiMapper::toDTO($user) : null;

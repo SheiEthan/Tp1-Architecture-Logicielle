@@ -1,33 +1,37 @@
 
-# TP1 – Clean Architecture (v2)
 
-## Structure du projet (5 couches hexagonales)
+# TP1 – Clean Architecture & CQRS (v3)
 
-- **Domain/** : Entités métier, value objects, règles métier, invariants. Aucun accès ORM/framework.
-- **Application/** : Use cases, ports (interfaces), DTO, mapping. Gère la logique applicative et les transactions.
-- **Persistence/** : Implémentations des repositories/UoW, accès base de données (Eloquent, SQL, etc.).
-- **Presentation/** : Contrôleurs, endpoints API. Appellent uniquement les use cases, gèrent la sérialisation et les erreurs.
-- **External/** : Intégrations externes (API, services tiers, etc.).
+## Structure du projet
 
-## Règles d’architecture
+- **Domain/** : Entités métier, value objects, règles métier, invariants.
+- **Application/** :  
+  - **Command/** : gestion des écritures (Create, Update, Delete)  
+  - **Query/** : gestion des lectures (Get, List)  
+  - **Mediator/** : médiateur pour dispatcher Command/Query
+  - **DTO, Mapping, Ports** : interfaces, objets de transfert, mappers
+- **Persistence/** : Implémentations des repositories, accès base de données.
+- **Presentation/** : Contrôleurs API, endpoints REST.
+- **External/** : Intégrations externes.
 
-- Les dépendances vont uniquement vers le bas : Presentation → Application → Domain ; Persistence/External → Application (impl. des ports).
-- Le domaine ne dépend d’aucun framework, ORM ou DTO.
-- Les use cases ne contiennent pas d’accès direct à la base ou à l’ORM.
-- Les dépendances sont injectées par constructeur et résolues via le conteneur Laravel.
+## Pattern CQRS (Command Query Responsibility Segregation)
 
-## Choix de conception
+- **Command** : toute opération d’écriture (création, modification, suppression)
+- **Query** : toute opération de lecture (récupération, listing)
+- **Mediator** : centralise l’acheminement des commandes et requêtes, découple le contrôleur de la logique métier
 
-- Respect strict de la séparation des responsabilités.
-- Mapping centralisé entre entités et DTO.
-- Tests unitaires sur les invariants métier dans Domain.
-- Remplaçabilité des implémentations (ports/interfaces).
+### Bénéfices observés
+
+- Séparation stricte des responsabilités (lecture/écriture)
+- Scalabilité : optimisation indépendante des lectures et écritures
+- Testabilité accrue
+- Facilité d’ajout de comportements transverses (logs, validation, etc.) via le médiateur
 
 ## Démarrage
 
 1. Installer les dépendances :  
 	`composer install`
-2. Configurer la base de données dans `.env`.
+2. Configurer la base de données dans `.env`
 3. Lancer les migrations :  
 	`php artisan migrate`
 4. Démarrer le serveur :  
@@ -35,8 +39,9 @@
 
 ## Fonctionnalités
 
-- CRUD utilisateur via API REST.
-- Architecture hexagonale, évolutive et testable.
+- CRUD utilisateur via API REST
+- Architecture hexagonale, évolutive et testable
+- CQRS et médiateur pour la couche Application
 
 ## API Utilisateur
 
