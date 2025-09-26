@@ -14,6 +14,10 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(UserRepositoryInterface::class, EloquentUserRepository::class);
+        $this->app->bind(
+            \Application\Ports\IUserApiRepository::class,
+            \Persistence\EloquentUserApiRepository::class
+        );
     }
 
     /**
