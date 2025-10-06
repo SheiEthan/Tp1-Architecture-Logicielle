@@ -18,6 +18,11 @@ class AppServiceProvider extends ServiceProvider
             \Application\Ports\IUserApiRepository::class,
             \Persistence\EloquentUserApiRepository::class
         );
+        // Binding pour le microservice CompteBancaire
+        $this->app->bind(
+            \Application\Ports\ICompteBancaireRepository::class,
+            \Persistence\EloquentCompteBancaireRepository::class
+        );
     }
 
     /**

@@ -1,0 +1,130 @@
+version: '3.8'
+
+services:
+  # Base de données pour le service Utilisateur
+  mysql_users:
+    image: mysql:8.0
+    container_name: tp3_mysql_users
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: tp3_users
+      MYSQL_USER: laravel
+      MYSQL_PASSWORD: secret
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_users_data:/var/lib/mysql
+    networks:
+      - microservices
+
+  # Base de données pour le service CompteBancaire
+  mysql_accounts:
+    image: mysql:8.0
+    container_name: tp3_mysql_accounts
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: tp3_accounts
+      MYSQL_USER: laravel
+      MYSQL_PASSWORD: secret
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_accounts_data:/var/lib/mysql
+    networks:
+      - microservices
+
+  # Microservice Utilisateur
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: tp3_user_service
+    ports:
+      - "8001:80"
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION=mysql
+      - DB_HOST=mysql_users
+      - DB_PORT=3306
+      - DB_DATABASE=tp3_users
+      - DB_USERNAME=laravel
+      - DB_PASSWORD=secret
+      - SERVICE_NAME=user-service
+    depends_on:
+      - mysql_users
+    networks:
+      - microservices
+
+  # Microservice CompteBancaire
+  account-service:
+    build:
+      context: ./account-service
+      dockerfile: Dockerfile
+    container_name: tp3_account_service
+    ports:
+      - "8002:80"
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION=mysql
+      - DB_HOST=mysql_accounts
+      - DB_PORT=3306
+      - DB_DATABASE=tp3_accounts
+      - DB_USERNAME=laravel
+      - DB_PASSWORD=secret
+      - SERVICE_NAME=account-service
+    depends_on:
+      - mysql_accounts
+    networks:
+      - microservices
+
+  # Service d'Orchestration (transactions atomiques)
+  orchestrator-service:
+    build:
+      context: ./orchestrator-service
+      dockerfile: Dockerfile
+    container_name: tp3_orchestrator_service
+    ports:
+      - "8003:80"
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - USER_SERVICE_URL=http://user-service
+      - ACCOUNT_SERVICE_URL=http://account-service
+      - SERVICE_NAME=orchestrator-service
+    depends_on:
+      - user-service
+      - account-service
+    networks:
+      - microservices
+
+  # API Gateway (requêtes transverses)
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: tp3_api_gateway
+    ports:
+      - "8000:80"
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - USER_SERVICE_URL=http://user-service
+      - ACCOUNT_SERVICE_URL=http://account-service
+      - ORCHESTRATOR_SERVICE_URL=http://orchestrator-service
+      - SERVICE_NAME=api-gateway
+    depends_on:
+      - user-service
+      - account-service
+      - orchestrator-service
+    networks:
+      - microservices
+
+volumes:
+  mysql_users_data:
+  mysql_accounts_data:
+
+networks:
+  microservices:
+    driver: bridge
