@@ -56,7 +56,10 @@ try {
     } elseif (($path === '/api/users' || $path === '/api/users/') && $method === 'POST') {
         // Créer un utilisateur avec compte par défaut
         $input = json_decode(file_get_contents('php://input'), true);
-        if (!$input || !$input['first_name'] || !$input['last_name'] || !$input['email']) {
+        if (!$input ||
+            !isset($input['first_name']) || empty($input['first_name']) ||
+            !isset($input['last_name']) || empty($input['last_name']) ||
+            !isset($input['email']) || empty($input['email'])) {
             http_response_code(400);
             echo json_encode(['error' => 'first_name, last_name et email sont requis']);
             exit;
