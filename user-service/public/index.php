@@ -42,7 +42,7 @@ function loadUsers() {
 
 function saveUsers($users) {
     global $dataFile;
-    file_put_contents($dataFile, json_encode($users, JSON_PRETTY_PRINT));
+    return file_put_contents($dataFile, json_encode($users, JSON_PRETTY_PRINT)) !== false;
 }
 
 $users = loadUsers();
@@ -127,8 +127,32 @@ try {
         }
         echo json_encode($users[$id]);
 
+    } elseif ($path === '/api/test-connection' || $path === '/api/test-connection/') {
+        // Test endpoint pour diagnostiquer la connexion au service de comptes
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, "http://account-service:80/api/accounts");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+
+        $response = curl_exec($ch);
+        $curlError = curl_error($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        echo json_encode([
+            'test' => 'Connection to account-service',
+            'response' => $response,
+            'curl_error' => $curlError,
+            'http_code' => $httpCode,
+            'response_type' => gettype($response),
+            'response_is_false' => $response === false,
+            'response_empty' => empty($response),
+            'curl_error_empty' => empty($curlError)
+        ]);
+
     } elseif (preg_match('#^/api/users/(\d+)/?$#', $path, $matches) && $method === 'DELETE') {
-        // Supprimer un utilisateur et ses comptes associés
+        // Supprimer un utilisateur et ses comptes associés avec pattern Saga
         $id = (int)$matches[1];
         if (!isset($users[$id])) {
             http_response_code(404);
@@ -136,46 +160,137 @@ try {
             exit;
         }
 
-        // Supprimer d'abord les comptes associés via le service des comptes
+        // SAGA PATTERN - PHASE 1: Récupérer les comptes associés
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, "http://account-service:80/api/accounts/user/{$id}");
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+        curl_setopt($ch, CURLOPT_FAILONERROR, false);
 
         $accountsResponse = curl_exec($ch);
+        $curlError = curl_error($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
+        // DEBUG: Log pour comprendre ce qui se passe
+        error_log("DEBUG DELETE - Response: " . var_export($accountsResponse, true));
+        error_log("DEBUG DELETE - Curl Error: " . var_export($curlError, true));
+        error_log("DEBUG DELETE - HTTP Code: " . $httpCode);
+
+        // Vérifier si le service de comptes est accessible
+        if (!empty($curlError) || $accountsResponse === false || $httpCode === 0) {
+            http_response_code(500);
+            echo json_encode([
+                'error' => 'Transaction échouée : impossible de vérifier les comptes associés',
+                'details' => 'Le service de comptes est indisponible, suppression annulée pour maintenir la cohérence',
+                'user_deletion' => 'CANCELLED',
+                'accounts_deletion' => 'FAILED',
+                'curl_error' => $curlError ?: 'Service unavailable',
+                'http_code' => $httpCode,
+                'response' => $accountsResponse,
+                'debug_test_result' => 'Service connection failed - Saga rollback triggered'
+            ]);
+            exit;
+        }
+
+        $accounts = json_decode($accountsResponse, true);
+        if (!is_array($accounts)) {
+            $accounts = [];
+        }
+
+        // SAGA PATTERN - PHASE 2: Supprimer tous les comptes associés
         $deletedAccounts = [];
-        if ($accountsResponse) {
-            $accounts = json_decode($accountsResponse, true);
-            if (is_array($accounts)) {
-                foreach ($accounts as $account) {
-                    $ch = curl_init();
-                    curl_setopt($ch, CURLOPT_URL, "http://account-service:80/api/accounts/{$account['id']}");
-                    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
-                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        $failedDeletions = [];
 
-                    $deleteResponse = curl_exec($ch);
-                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                    curl_close($ch);
+        foreach ($accounts as $account) {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, "http://account-service:80/api/accounts/{$account['id']}");
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 5);
 
-                    if ($httpCode === 204) {
-                        $deletedAccounts[] = $account['id'];
-                    }
-                }
+            $deleteResponse = curl_exec($ch);
+            $curlError = curl_error($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if (!$curlError && $httpCode === 204) {
+                $deletedAccounts[] = $account['id'];
+            } else {
+                $failedDeletions[] = [
+                    'account_id' => $account['id'],
+                    'error' => $curlError,
+                    'http_code' => $httpCode
+                ];
             }
         }
 
-        // Supprimer l'utilisateur
-        unset($users[$id]);
-        saveUsers($users);
+        // SAGA PATTERN - VÉRIFICATION: Si tous les comptes n'ont pas pu être supprimés, annuler
+        if (!empty($failedDeletions)) {
+            // COMPENSATION: Recréer les comptes qui ont été supprimés (rollback)
+            foreach ($deletedAccounts as $deletedAccountId) {
+                // Trouver les données du compte supprimé pour le recréer
+                foreach ($accounts as $account) {
+                    if ($account['id'] == $deletedAccountId) {
+                        $ch = curl_init();
+                        curl_setopt($ch, CURLOPT_URL, "http://account-service:80/api/accounts");
+                        curl_setopt($ch, CURLOPT_POST, true);
+                        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+                            'user_id' => $account['user_id'],
+                            'solde' => $account['solde'],
+                            'type_compte' => $account['type_compte'],
+                            'numero_compte' => $account['numero_compte']
+                        ]));
+                        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+                        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+                        curl_exec($ch);
+                        curl_close($ch);
+                        break;
+                    }
+                }
+            }
 
+            http_response_code(500);
+            echo json_encode([
+                'error' => 'Transaction échouée : impossible de supprimer tous les comptes',
+                'details' => 'Certains comptes n\'ont pas pu être supprimés, utilisateur conservé pour maintenir la cohérence',
+                'user_deletion' => 'CANCELLED',
+                'accounts_deletion' => 'PARTIAL_FAILURE',
+                'deleted_accounts' => $deletedAccounts,
+                'failed_deletions' => $failedDeletions,
+                'rollback_status' => 'COMPENSATED'
+            ]);
+            exit;
+        }
+
+        // SAGA PATTERN - PHASE 3: Supprimer l'utilisateur (seulement si tous les comptes ont été supprimés)
+        $userBackup = $users[$id]; // Sauvegarde pour rollback potentiel
+        unset($users[$id]);
+
+        if (!saveUsers($users)) {
+            // COMPENSATION: Restaurer l'utilisateur si la sauvegarde échoue
+            $users[$id] = $userBackup;
+
+            http_response_code(500);
+            echo json_encode([
+                'error' => 'Transaction échouée : impossible de sauvegarder la suppression utilisateur',
+                'details' => 'Les comptes ont été supprimés mais l\'utilisateur n\'a pas pu être supprimé',
+                'user_deletion' => 'FAILED',
+                'accounts_deletion' => 'SUCCESS',
+                'rollback_status' => 'USER_RESTORED'
+            ]);
+            exit;
+        }
+
+        // SUCCÈS COMPLET
         http_response_code(200);
         echo json_encode([
-            'message' => 'User deleted successfully',
+            'message' => 'User and all associated accounts deleted successfully',
             'user_id' => $id,
-            'accounts_deleted' => $deletedAccounts
+            'accounts_deleted' => $deletedAccounts,
+            'transaction_status' => 'SUCCESS'
         ]);
 
     } elseif ($path === '/api/health' || $path === '/api/health/') {
